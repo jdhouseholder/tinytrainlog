@@ -1,0 +1,2 @@
+class MetricsLogger:
+    pass
