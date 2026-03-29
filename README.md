@@ -18,9 +18,9 @@ with MetricsLogger("./runs", run_name="lr-sweep-3e4") as log:
 
     for epoch in range(10):
         train_loss = train(model, loader)
-        val_loss, val_acc = evaluate(model, val_loader)
-
         log.log_epoch(epoch=epoch, train_loss=train_loss)
+
+        val_loss, val_acc = evaluate(model, val_loader)
         log.log_eval(epoch=epoch, val_loss=val_loss, val_acc=val_acc)
 
         torch.save(model.state_dict(), log.checkpoint_path(epoch=epoch))
