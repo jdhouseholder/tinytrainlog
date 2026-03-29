@@ -1,5 +1,5 @@
 import random
-from pathlib import Path
+import sqlite3
 
 ADJECTIVES = [
     "bold",
@@ -108,8 +108,8 @@ NOUNS = [
 ]
 
 
-def generate_run_name(root_dir: Path, max_attempts: int = 100) -> str:
-    existing = {p.name for p in root_dir.iterdir()} if root_dir.exists() else set()
+def generate_run_name(conn: sqlite3.Connection, max_attempts: int = 100) -> str:
+    existing = {row[0] for row in conn.execute("SELECT name FROM runs").fetchall()}
     for _ in range(max_attempts):
         name = f"{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}"
         if name not in existing:
