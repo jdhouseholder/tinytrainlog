@@ -48,6 +48,44 @@ conn.execute("""
 """).fetchall()
 ```
 
+## API
+
+**Initialization:**
+
+```python
+# Auto-generated run name (e.g. "bold-falcon")
+log = MetricsLogger("./runs")
+
+# Explicit name
+log = MetricsLogger("./runs", run_name="lr-sweep-3e4")
+
+# Override machine ID (defaults to hostname)
+log = MetricsLogger("./runs", machine_id="gpu-box-1")
+```
+
+**Logging:**
+
+| Method | Purpose |
+|--------|---------|
+| `set_config(dict)` | Hyperparameters and run metadata (JSON, upserts per key) |
+| `add_tags(list)` | Labels for filtering (e.g. `["ablation", "v2"]`) |
+| `log_step(step, **metrics)` | Per-batch metrics (loss, lr, throughput) |
+| `log_epoch(epoch, **metrics)` | Per-epoch metrics |
+| `log_eval(step=, epoch=, **metrics)` | Validation metrics (requires at least one of step/epoch) |
+| `log_test(**metrics)` | Final test results (upserts) |
+
+**Checkpoints and paths:**
+
+```python
+log.run_name                  # "bold-falcon"
+log.run_dir                   # Path("./runs/bold-falcon")
+log.checkpoint_dir            # Path("./runs/bold-falcon/checkpoints")
+log.checkpoint_path(epoch=5)  # Path("./runs/bold-falcon/checkpoints/epoch_5.pt")
+log.checkpoint_path(step=100) # Path("./runs/bold-falcon/checkpoints/step_100.pt")
+```
+
+Use `run_dir` to save extra artifacts (plots, predictions, etc.) alongside the run.
+
 ### Multi-server merging
 
 Ran experiments on multiple machines? Merge them into one database:
