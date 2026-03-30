@@ -226,8 +226,8 @@ NOUNS = [
     "trout",
     "vale",
     "vine",
-    "wren",
     "wolf",
+    "wren",
     "yew",
 ]
 
