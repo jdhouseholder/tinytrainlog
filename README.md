@@ -1,5 +1,8 @@
 # 🚅🪵 Tiny Train Log 🚅🪵
 
+[![PyPI](https://img.shields.io/pypi/v/tinytrainlog)](https://pypi.org/project/tinytrainlog/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Structured, queryable logging for ML experiments. Track metrics across machines,
 merge results into one SQLite database, and analyze everything with plain SQL.
 
