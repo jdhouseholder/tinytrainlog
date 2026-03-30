@@ -209,6 +209,9 @@ class MetricsLogger:
             conn.execute("INSERT INTO main.runs SELECT * FROM other.runs")
             for table in _DATA_TABLES:
                 conn.execute(f"INSERT INTO main.{table} SELECT * FROM other.{table}")
+            source_runs = [
+                row[0] for row in conn.execute("SELECT name FROM other.runs").fetchall()
+            ]
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
@@ -217,12 +220,11 @@ class MetricsLogger:
             conn.execute("DETACH DATABASE other")
             conn.close()
 
-        # Copy checkpoint directories
-        for run_dir in source_dir.iterdir():
+        # Copy run directories (checkpoints, etc.)
+        for run_name in source_runs:
+            run_dir = source_dir / run_name
             if run_dir.is_dir():
-                target_run_dir = target_dir / run_dir.name
-                if not target_run_dir.exists():
-                    shutil.copytree(run_dir, target_run_dir)
+                shutil.copytree(run_dir, target_dir / run_name)
 
     def close(self) -> None:
         self._conn.close()
