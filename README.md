@@ -56,3 +56,83 @@ Ran experiments on multiple machines? Merge them into one database:
 MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-1/runs")
 MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-2/runs")
 ```
+
+## Recipes
+
+All data lives in a single SQLite file:
+
+```python
+import sqlite3
+conn = sqlite3.connect("./runs/runs.db")
+```
+
+**List all runs with tags:**
+```sql
+SELECT r.name, r.machine_id, r.created_at, GROUP_CONCAT(t.tag)
+FROM runs r LEFT JOIN tags t ON t.run_name = r.name
+GROUP BY r.name
+```
+
+**Best run by test accuracy:**
+```sql
+SELECT run_name, value FROM test
+WHERE key = 'test_acc' ORDER BY value DESC LIMIT 1
+```
+
+**Compare hyperparameters across runs:**
+```sql
+SELECT r.name,
+       MAX(CASE WHEN c.key = 'lr' THEN c.value END) AS lr,
+       MAX(CASE WHEN c.key = 'model' THEN c.value END) AS model,
+       t.value AS test_acc
+FROM runs r
+JOIN config c ON c.run_name = r.name
+LEFT JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
+GROUP BY r.name
+ORDER BY t.value DESC
+```
+
+**Training curve for a run (for plotting):**
+```sql
+SELECT step, key, value FROM steps
+WHERE run_name = 'lr-sweep-3e4' ORDER BY step
+```
+
+**Filter runs by tag:**
+```sql
+SELECT run_name FROM tags WHERE tag = 'ablation'
+```
+
+**Side-by-side eval comparison:**
+```sql
+SELECT a.epoch, a.value AS model_a, b.value AS model_b
+FROM eval a JOIN eval b USING (epoch, key)
+WHERE a.run_name = 'model-a' AND b.run_name = 'model-b' AND a.key = 'val_acc'
+ORDER BY a.epoch
+```
+
+**Latest runs:**
+```sql
+SELECT name, created_at FROM runs ORDER BY created_at DESC LIMIT 10
+```
+
+**Runs from a specific machine:**
+```sql
+SELECT name FROM runs WHERE machine_id = 'gpu-box-1'
+```
+
+**Pareto frontier (accuracy vs. parameter count):**
+```sql
+SELECT r.name, c.value AS param_count, t.value AS test_acc
+FROM runs r
+JOIN config c ON c.run_name = r.name AND c.key = 'param_count'
+JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
+WHERE NOT EXISTS (
+    SELECT 1 FROM config c2 JOIN test t2 ON t2.run_name = c2.run_name
+    WHERE c2.key = 'param_count' AND t2.key = 'test_acc'
+      AND CAST(c2.value AS REAL) <= CAST(c.value AS REAL)
+      AND t2.value >= t.value
+      AND (CAST(c2.value AS REAL) < CAST(c.value AS REAL) OR t2.value > t.value)
+)
+ORDER BY CAST(c.value AS REAL)
+```
