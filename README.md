@@ -57,6 +57,14 @@ MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-1/runs")
 MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-2/runs")
 ```
 
+### Deleting a run
+
+Remove a run and all its data (config, metrics, checkpoints):
+
+```python
+logger.delete_run("old-run")
+```
+
 ## Recipes
 
 All data lives in a single SQLite file:
