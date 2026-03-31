@@ -105,6 +105,28 @@ logger.delete_run("old-run")
 
 ## Recipes
 
+Save queries in a `.sql` file and run them directly from the terminal:
+
+```bash
+sqlite3 ./runs/runs.db < analysis.sql
+```
+
+```sql
+-- analysis.sql
+.headers on
+.mode column
+
+SELECT r.name,
+       MAX(CASE WHEN c.key = 'lr' THEN c.value END) AS lr,
+       MAX(CASE WHEN c.key = 'model' THEN c.value END) AS model,
+       t.value AS test_acc
+FROM runs r
+JOIN config c ON c.run_name = r.name
+LEFT JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
+GROUP BY r.name
+ORDER BY t.value DESC;
+```
+
 All data lives in a single SQLite file:
 
 ```python
