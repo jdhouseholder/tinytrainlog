@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS config (
     run_name   TEXT NOT NULL REFERENCES runs(name),
     key        TEXT NOT NULL,
-    value      TEXT NOT NULL,
+    value      TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(run_name, key)
 );
@@ -29,14 +29,14 @@ CREATE TABLE IF NOT EXISTS steps (
     run_name   TEXT    NOT NULL REFERENCES runs(name),
     step       INTEGER NOT NULL,
     key        TEXT    NOT NULL,
-    value      REAL    NOT NULL,
+    value      REAL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS epochs (
     run_name   TEXT    NOT NULL REFERENCES runs(name),
     epoch      INTEGER NOT NULL,
     key        TEXT    NOT NULL,
-    value      REAL    NOT NULL,
+    value      REAL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS eval (
@@ -44,13 +44,13 @@ CREATE TABLE IF NOT EXISTS eval (
     step       INTEGER,
     epoch      INTEGER,
     key        TEXT    NOT NULL,
-    value      REAL    NOT NULL,
+    value      REAL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS test (
     run_name   TEXT NOT NULL REFERENCES runs(name),
     key        TEXT NOT NULL,
-    value      REAL NOT NULL,
+    value      REAL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(run_name, key)
 );
