@@ -15,7 +15,14 @@ pip install tinytrainlog
 ```python
 from tinytrainlog import MetricsLogger
 
-with MetricsLogger("./runs", run_name="lr-sweep-3e4") as log:
+schema = {
+    "config": {"model": str, "lr": float, "epochs": int},
+    "train":  {"train_loss": float},
+    "eval":   {"val_loss": float, "val_acc": float},
+    "test":   {"test_acc": float, "test_loss": float},
+}
+
+with MetricsLogger("./runs", schema=schema, run_name="lr-sweep-3e4") as log:
     log.set_config({"model": "resnet50", "lr": 3e-4, "epochs": 10})
     log.add_tags(["sweep", "baseline"])
 
@@ -40,11 +47,10 @@ conn = sqlite3.connect("./runs/runs.db")
 
 # Compare learning rates across runs
 conn.execute("""
-    SELECT c.run_name, c.value AS lr, e.value AS val_acc
+    SELECT c.run_name, c.lr, e.val_acc
     FROM config c
     JOIN eval e USING (run_name)
-    WHERE c.key = 'lr' AND e.key = 'val_acc'
-    ORDER BY CAST(e.value AS REAL) DESC
+    ORDER BY e.val_acc DESC
 """).fetchall()
 ```
 
@@ -53,26 +59,39 @@ conn.execute("""
 **Initialization:**
 
 ```python
+schema = {
+    "config": {"lr": float, "batch_size": int},
+    "train":  {"loss": float},
+    "eval":   {"val_loss": float, "val_acc": float},
+    "test":   {"test_acc": float},
+}
+
 # Auto-generated run name (e.g. "bold-falcon")
-log = MetricsLogger("./runs")
+log = MetricsLogger("./runs", schema=schema)
 
 # Explicit name
-log = MetricsLogger("./runs", run_name="lr-sweep-3e4")
+log = MetricsLogger("./runs", schema=schema, run_name="lr-sweep-3e4")
 
 # Override machine ID (defaults to hostname)
-log = MetricsLogger("./runs", machine_id="gpu-box-1")
+log = MetricsLogger("./runs", schema=schema, machine_id="gpu-box-1")
 ```
+
+The `schema` dict defines typed columns for each stage. Supported types:
+`float` (REAL), `int` (INTEGER), `str` (TEXT). New columns are added
+automatically via `ALTER TABLE` on init — schemas can evolve over time.
 
 **Logging:**
 
 | Method | Purpose |
 |--------|---------|
-| `set_config(dict)` | Hyperparameters and run metadata (JSON, upserts per key) |
+| `set_config(dict)` | Hyperparameters and run metadata (one row per run, upserts) |
 | `add_tags(list)` | Labels for filtering (e.g. `["ablation", "v2"]`) |
-| `log_step(step, **metrics)` | Per-batch metrics (loss, lr, throughput) |
-| `log_epoch(epoch, **metrics)` | Per-epoch metrics |
+| `log_step(step, **metrics)` | Per-batch metrics to `train` table |
+| `log_epoch(epoch, **metrics)` | Per-epoch metrics to `train` table |
 | `log_eval(step=, epoch=, **metrics)` | Validation metrics (requires at least one of step/epoch) |
-| `log_test(**metrics)` | Final test results (upserts) |
+| `log_test(**metrics)` | Final test results (one row per run, upserts) |
+
+Metric keys are validated against the schema — unknown keys raise `ValueError`.
 
 **Checkpoints and paths:**
 
@@ -95,6 +114,9 @@ MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-1/runs")
 MetricsLogger.merge(target_dir="./all_runs", source_dir="/mnt/gpu-box-2/runs")
 ```
 
+Merge auto-discovers columns from the source and adds any missing ones to
+the target via `ALTER TABLE`, so databases with different schemas merge cleanly.
+
 ### Deleting a run
 
 Remove a run and all its data (config, metrics, checkpoints):
@@ -116,15 +138,11 @@ sqlite3 ./runs/runs.db < analysis.sql
 .headers on
 .mode column
 
-SELECT r.name,
-       MAX(CASE WHEN c.key = 'lr' THEN c.value END) AS lr,
-       MAX(CASE WHEN c.key = 'model' THEN c.value END) AS model,
-       t.value AS test_acc
+SELECT r.name, c.lr, c.model, t.test_acc
 FROM runs r
 JOIN config c ON c.run_name = r.name
-LEFT JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
-GROUP BY r.name
-ORDER BY t.value DESC;
+LEFT JOIN test t ON t.run_name = r.name
+ORDER BY t.test_acc DESC;
 ```
 
 All data lives in a single SQLite file:
@@ -143,26 +161,22 @@ GROUP BY r.name
 
 **Best run by test accuracy:**
 ```sql
-SELECT run_name, value FROM test
-WHERE key = 'test_acc' ORDER BY value DESC LIMIT 1
+SELECT run_name, test_acc FROM test
+ORDER BY test_acc DESC LIMIT 1
 ```
 
 **Compare hyperparameters across runs:**
 ```sql
-SELECT r.name,
-       MAX(CASE WHEN c.key = 'lr' THEN c.value END) AS lr,
-       MAX(CASE WHEN c.key = 'model' THEN c.value END) AS model,
-       t.value AS test_acc
+SELECT r.name, c.lr, c.model, t.test_acc
 FROM runs r
 JOIN config c ON c.run_name = r.name
-LEFT JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
-GROUP BY r.name
-ORDER BY t.value DESC
+LEFT JOIN test t ON t.run_name = r.name
+ORDER BY t.test_acc DESC
 ```
 
 **Training curve for a run (for plotting):**
 ```sql
-SELECT step, key, value FROM steps
+SELECT step, loss FROM train
 WHERE run_name = 'lr-sweep-3e4' ORDER BY step
 ```
 
@@ -173,9 +187,9 @@ SELECT run_name FROM tags WHERE tag = 'ablation'
 
 **Side-by-side eval comparison:**
 ```sql
-SELECT a.epoch, a.value AS model_a, b.value AS model_b
-FROM eval a JOIN eval b USING (epoch, key)
-WHERE a.run_name = 'model-a' AND b.run_name = 'model-b' AND a.key = 'val_acc'
+SELECT a.epoch, a.val_acc AS model_a, b.val_acc AS model_b
+FROM eval a JOIN eval b USING (epoch)
+WHERE a.run_name = 'model-a' AND b.run_name = 'model-b'
 ORDER BY a.epoch
 ```
 
@@ -191,16 +205,15 @@ SELECT name FROM runs WHERE machine_id = 'gpu-box-1'
 
 **Pareto frontier (accuracy vs. parameter count):**
 ```sql
-SELECT r.name, c.value AS param_count, t.value AS test_acc
+SELECT r.name, c.param_count, t.test_acc
 FROM runs r
-JOIN config c ON c.run_name = r.name AND c.key = 'param_count'
-JOIN test t ON t.run_name = r.name AND t.key = 'test_acc'
+JOIN config c ON c.run_name = r.name
+JOIN test t ON t.run_name = r.name
 WHERE NOT EXISTS (
     SELECT 1 FROM config c2 JOIN test t2 ON t2.run_name = c2.run_name
-    WHERE c2.key = 'param_count' AND t2.key = 'test_acc'
-      AND CAST(c2.value AS REAL) <= CAST(c.value AS REAL)
-      AND t2.value >= t.value
-      AND (CAST(c2.value AS REAL) < CAST(c.value AS REAL) OR t2.value > t.value)
+    WHERE c2.param_count <= c.param_count
+      AND t2.test_acc >= t.test_acc
+      AND (c2.param_count < c.param_count OR t2.test_acc > t.test_acc)
 )
-ORDER BY CAST(c.value AS REAL)
+ORDER BY c.param_count
 ```
