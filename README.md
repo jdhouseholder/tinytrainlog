@@ -60,10 +60,10 @@ conn.execute("""
 
 ```python
 schema = {
-    "config": {"lr": float, "batch_size": int},
-    "train":  {"loss": float},
+    "config": {"model": str, "lr": float, "epochs": int},
+    "train":  {"train_loss": float},
     "eval":   {"val_loss": float, "val_acc": float},
-    "test":   {"test_acc": float},
+    "test":   {"test_acc": float, "test_loss": float},
 }
 
 # Auto-generated run name (e.g. "bold-falcon")
@@ -167,17 +167,17 @@ ORDER BY test_acc DESC LIMIT 1
 
 **Compare hyperparameters across runs:**
 ```sql
-SELECT r.name, c.lr, c.model, t.test_acc
-FROM runs r
-JOIN config c ON c.run_name = r.name
-LEFT JOIN test t ON t.run_name = r.name
-ORDER BY t.test_acc DESC
+SELECT c.run_name, c.lr, c.epochs, MIN(e.val_loss) AS best_val_loss
+FROM config c
+JOIN eval e USING (run_name)
+GROUP BY c.run_name
+ORDER BY best_val_loss
 ```
 
 **Training curve for a run (for plotting):**
 ```sql
-SELECT step, loss FROM train
-WHERE run_name = 'lr-sweep-3e4' ORDER BY step
+SELECT epoch, train_loss FROM train
+WHERE run_name = 'lr-sweep-3e4' ORDER BY epoch
 ```
 
 **Filter runs by tag:**
@@ -203,17 +203,17 @@ SELECT name, created_at FROM runs ORDER BY created_at DESC LIMIT 10
 SELECT name FROM runs WHERE machine_id = 'gpu-box-1'
 ```
 
-**Pareto frontier (accuracy vs. parameter count):**
+**Pareto frontier (accuracy vs. training budget):**
 ```sql
-SELECT r.name, c.param_count, t.test_acc
+SELECT r.name, c.epochs, t.test_acc
 FROM runs r
 JOIN config c ON c.run_name = r.name
 JOIN test t ON t.run_name = r.name
 WHERE NOT EXISTS (
     SELECT 1 FROM config c2 JOIN test t2 ON t2.run_name = c2.run_name
-    WHERE c2.param_count <= c.param_count
+    WHERE c2.epochs <= c.epochs
       AND t2.test_acc >= t.test_acc
-      AND (c2.param_count < c.param_count OR t2.test_acc > t.test_acc)
+      AND (c2.epochs < c.epochs OR t2.test_acc > t.test_acc)
 )
-ORDER BY c.param_count
+ORDER BY c.epochs
 ```
